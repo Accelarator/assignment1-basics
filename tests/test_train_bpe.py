@@ -21,6 +21,7 @@ def test_train_bpe_speed():
         special_tokens=["<|endoftext|>"],
     )
     end_time = time.time()
+    print(f"Training time: {end_time - start_time:.2f} seconds")
     assert end_time - start_time < 1.5
 
 
@@ -38,6 +39,7 @@ def test_train_bpe():
 
     # Compare the learned merges to the expected output merges
     gpt2_byte_decoder = {v: k for k, v in gpt2_bytes_to_unicode().items()}
+    print(gpt2_byte_decoder)
     with open(reference_merges_path, encoding="utf-8") as f:
         gpt2_reference_merges = [tuple(line.rstrip().split(" ")) for line in f]
         reference_merges = [
@@ -47,6 +49,17 @@ def test_train_bpe():
             )
             for merge_token_1, merge_token_2 in gpt2_reference_merges
         ]
+
+    train_merges = [
+        (
+            vocab[pair[0]], vocab[pair[1]]
+        )
+        for pair, value in merges.items()
+    ]
+
+    print(reference_merges)
+    print(train_merges[:100])
+    print(f"merges size is {len(merges)}, reference_merges size is {len(reference_merges)}")
     assert merges == reference_merges
 
     # Compare the vocab to the expected output vocab
@@ -86,3 +99,7 @@ def test_train_bpe_special_tokens(snapshot):
             "merges": merges,
         },
     )
+
+if __name__ == "__main__":
+    # test_train_bpe_speed()
+    test_train_bpe()
