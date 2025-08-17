@@ -39,9 +39,10 @@ def test_train_bpe():
 
     # Compare the learned merges to the expected output merges
     gpt2_byte_decoder = {v: k for k, v in gpt2_bytes_to_unicode().items()}
-    print(gpt2_byte_decoder)
+    # print(f"gpt2_byte_decoder is {gpt2_byte_decoder}")
     with open(reference_merges_path, encoding="utf-8") as f:
         gpt2_reference_merges = [tuple(line.rstrip().split(" ")) for line in f]
+        # print(f"gpt2_reference_merges is {gpt2_reference_merges}")
         reference_merges = [
             (
                 bytes([gpt2_byte_decoder[token] for token in merge_token_1]),
@@ -50,16 +51,9 @@ def test_train_bpe():
             for merge_token_1, merge_token_2 in gpt2_reference_merges
         ]
 
-    train_merges = [
-        (
-            vocab[pair[0]], vocab[pair[1]]
-        )
-        for pair, value in merges.items()
-    ]
-
-    print(reference_merges)
-    print(train_merges[:100])
-    print(f"merges size is {len(merges)}, reference_merges size is {len(reference_merges)}")
+    # print(f"reference_merges is {reference_merges}")
+    # print(f"train_bpe merges is {merges}")
+    # print(f"merges size is {len(merges)}, reference_merges size is {len(reference_merges)}")
     assert merges == reference_merges
 
     # Compare the vocab to the expected output vocab
@@ -71,6 +65,8 @@ def test_train_bpe():
         }
     # Rather than checking that the vocabs exactly match (since they could
     # have been constructed differently, we'll make sure that the vocab keys and values match)
+    # print(f"reference_vocab vocab keys is {reference_vocab.keys()}")
+    # print(f"train_bpe vocab keys is {vocab.keys()}")
     assert set(vocab.keys()) == set(reference_vocab.keys())
     assert set(vocab.values()) == set(reference_vocab.values())
 
@@ -101,5 +97,6 @@ def test_train_bpe_special_tokens(snapshot):
     )
 
 if __name__ == "__main__":
-    # test_train_bpe_speed()
+    test_train_bpe_speed()
     test_train_bpe()
+    test_train_bpe_special_tokens()

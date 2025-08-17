@@ -10,13 +10,21 @@ def decode_utf8_bytes_to_str_wrong(bytestring: bytes):
 
 if __name__ == "__main__":
 
-    # print(decode_utf8_bytes_to_str_wrong("hello! こんにちは!".encode("utf-8")))
+    str = "sabcasldf"
+    print("".encode("utf-8"))
+
+    print(str[0:2])
+    print(str[3:5])
+    print(str[2:3])
+    print(str[5:6])
 
 
-    for i in range(256):
-        for j in range(256):
-            b = bytes([i, j])
-            try:
-                b.decode("utf-8")
-            except Exception:
-                print(f"Cannot decode: {b}")
+    vocab_bytes2idx = {}
+    vocab_bytes2idx[b'b'] = 11
+    vocab_bytes2idx[b'bc'] = 111 
+    str_b = "b"
+    assert str_b.encode("utf-8") in vocab_bytes2idx
+    str_bc = "bc"
+    assert str_bc.encode("utf-8") in vocab_bytes2idx
+
+        

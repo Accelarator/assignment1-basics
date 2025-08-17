@@ -5,6 +5,8 @@ from collections import defaultdict
 import random
 import torch
 import tiktoken
+import os
+from typing import BinaryIO
 
 GPT2_TOKENIZER_REGEX = \
     r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
@@ -43,6 +45,51 @@ class ByteTokenizer(Tokenizer):
         string = string_bytes.decode("utf-8")
         return string
     
+def find_chunk_boundaries(
+    file: BinaryIO,
+    desired_num_chunks: int,
+    split_special_token: bytes,
+) -> list[int]:
+    """
+    Chunk the file into parts that can be counted independently.
+    May return fewer chunks if the boundaries end up overlapping.
+    """
+    assert isinstance(split_special_token, bytes), "Must represent special token as a bytestring"
+
+    # Get total file size in bytes
+    file.seek(0, os.SEEK_END)
+    file_size = file.tell()
+    file.seek(0)
+
+    chunk_size = file_size // desired_num_chunks
+
+    # Initial guesses for chunk boundary locations, uniformly spaced
+    # Chunks start on previous index, don't include last index
+    chunk_boundaries = [i * chunk_size for i in range(desired_num_chunks + 1)]
+    chunk_boundaries[-1] = file_size
+
+    mini_chunk_size = 4096  # Read ahead by 4k bytes at a time
+
+    for bi in range(1, len(chunk_boundaries) - 1):
+        initial_position = chunk_boundaries[bi]
+        file.seek(initial_position)  # Start at boundary guess
+        while True:
+            mini_chunk = file.read(mini_chunk_size)  # Read a mini chunk
+
+            # If EOF, this boundary should be at the end of the file
+            if mini_chunk == b"":
+                chunk_boundaries[bi] = file_size
+                break
+
+            # Find the special token in the mini chunk
+            found_at = mini_chunk.find(split_special_token)
+            if found_at != -1:
+                chunk_boundaries[bi] = initial_position + found_at
+                break
+            initial_position += mini_chunk_size
+
+    # Make sure all boundaries are unique, but might be fewer than desired_num_chunks
+    return sorted(set(chunk_boundaries))
 
 def merge(indices: list[int], pair: tuple[int, int], new_index: int) -> list[int]:
     """Return `indices`, but with all instances of `pair` replaced with `new_index`."""
@@ -115,84 +162,131 @@ def merge_indices(indices: list[int], merges: dict[tuple[int, int], int]) -> lis
     return indices
 
 
+
+def merge_pair(pre_token_cnt, pre_token_indices, bpe_counts, new_str, pair, new_index):
+
+    for segment, indices in pre_token_indices.items():
+        
+        if new_str in segment:
+            cnt = pre_token_cnt[segment]
+            new_indices = []
+            i = 0
+            while i < len(indices):
+                if i + 1 < len(indices) and indices[i] == pair[0] and indices[i+1] == pair[1]:
+                    new_indices.append(new_index)
+                    i += 2
+                else:
+                    new_indices.append(indices[i])
+                    i += 1
+
+            # 更新bpe_counts
+            bpe_counts[pair] = -1
+            for i in range(len(new_indices)):
+                if new_indices[i] == new_index:
+                    if i - 1 >= 0:
+                        bpe_counts[(new_indices[i-1], pair[0])] -= cnt
+                        bpe_counts[(new_indices[i-1], new_index)] += cnt
+                    if i + 1 < len(new_indices):
+                        bpe_counts[(pair[1], new_indices[i+1])] -= cnt
+                        bpe_counts[(new_index, new_indices[i+1])] += cnt
+            
+            pre_token_indices[segment] = new_indices
+
+def get_bpe_counts(pre_token_cnt, pre_token_indices):
+
+    bpe_counts = defaultdict(int)
+    for segment, indices in pre_token_indices.items():
+        cnt = pre_token_cnt[segment]
+        for index1, index2 in zip(indices, indices[1:]):
+            bpe_counts[(index1, index2)] += cnt
+
+    return bpe_counts
+
 def train_bpe(input_path: str, vocab_size: int, special_tokens: list[str]) -> tuple[dict[int, bytes], dict[tuple[int, int], int]]:
 
+    with open(input_path, "rb") as f:
+        num_processes = 4
+        boundaries = find_chunk_boundaries(f, num_processes, b"<|endoftext|>")
+
+        # The following is a serial implementation, but you can parallelize this
+        # by sending each start/end pair to a set of processes.
+        for start, end in zip(boundaries[:-1], boundaries[1:]):
+            f.seek(start)
+            chunk = f.read(end - start).decode("utf-8", errors="ignore")
+
     text = open(input_path, encoding="utf-8").read()
-    print(f"Text befor pat: {text}")
+    # print(f"Text befor pat: {text}")
+
+    vocab_idx2bytes = {}
+    vocab_bytes2idx = {}
+    for st in special_tokens:
+        vocab_idx2bytes[len(vocab_idx2bytes)] = st.encode("utf-8")
+    for i in range(256):
+        vocab_idx2bytes[len(vocab_idx2bytes)] = bytes([i])
+
+    vocab_bytes2idx = {v: k for k, v in vocab_idx2bytes.items()}
 
     pattern = GPT2_TOKENIZER_REGEX  
-    bpe_counts = defaultdict(int)
-    idx = 0
-    last_segment_bytes = None
+    pre_token_cnt = defaultdict(int) # token str => token cnt
+    pre_token_indices = {} # token str => token indices
     for match in regex.finditer(pattern, text):
-        
         segment = match.group()
-        print(segment)
-        # 计算segment之间的bpe
-        cur_segment_bytes = segment.encode("utf-8")
-        if last_segment_bytes:
-            bpe_counts[(last_segment_bytes, cur_segment_bytes)] += 1
-        last_segment_bytes = cur_segment_bytes
+        pre_token_cnt[segment] += 1
+        pre_token_indices[segment] = list(map(lambda x: x + len(special_tokens), segment.encode("utf-8")))
 
-        # 计算segment内部的bpe
-        segment_list = list(map(int, segment.encode("utf-8")))
-        for index1, index2 in zip(segment_list, segment_list[1:]):
-            bpe_counts[(index1, index2)] += 1
-
-        # Don't care across segment
-
-        idx += 1
-
-    for pair, v in bpe_counts.items():
-        print(pair[0].decode("utf-8"), ' ', pair[1].decode("utf-8"), ' ', v) 
-
-    indices = list(map(int, text.encode("utf-8")))
+    bpe_counts = get_bpe_counts(pre_token_cnt, pre_token_indices)
     merges: dict[tuple[int, int], int] = {} # index1, index2 => merged index
-
-
-
-    vocab = {}
-    vocab_idx = {}
-    for st in special_tokens:
-        vocab[len(vocab)] = st
-    for i in range(256):
-        vocab[len(vocab)] = bytes(i)
-
-    vocab_idx = {v: k for k, v in vocab.items()}
-    print(f"Original indices size is {len(indices)}\n")
-
-    # Count the number of occurrences of each pair of tokens
-
-    while len(vocab_idx) < vocab_size:
-        counts = defaultdict(int)
-        total_pair = 0
-        for index1, index2 in zip(indices, indices[1:]):
-            counts[(index1, index2)] += 1
-            total_pair += 1
-
-        if total_pair == len(counts):
+    return_merges = []
+    
+    while len(vocab_idx2bytes) < vocab_size:
+        if len(vocab_idx2bytes) >= vocab_size:
             break
 
-        # Find the most common pair
-        counts = sorted(counts.items(), key=lambda x: x[1], reverse=True)
+        # 优先按数量倒序排序，否则按pair[0]字典序排序
+        max_cnt = 0
+        lst_key_bytes = "".encode("utf-8")
+        lst_value_bytes = "".encode("utf-8")
+        cur_pair = None
+        for pair, cnt in bpe_counts.items():
+            cur_key_bytes = vocab_idx2bytes[pair[0]]
+            cur_value_bytes = vocab_idx2bytes[pair[1]]
+            is_replace = False
+            if cnt > max_cnt:
+                is_replace = True
+            elif cnt == max_cnt:
+                if cur_key_bytes > lst_key_bytes:
+                    is_replace = True
+                elif cur_key_bytes == lst_key_bytes:
+                    if cur_value_bytes > lst_value_bytes:
+                        is_replace = True
 
-        for i, item in enumerate(counts):
-            if item[1] <= 1:
-                break
-            
-            pair = item[0]
-            new_index = len(vocab_idx)
-            if new_index >= vocab_size:
-                break
+            if is_replace:
+                cur_pair = pair
+                max_cnt = cnt
+                lst_key_bytes = cur_key_bytes
+                lst_value_bytes = cur_value_bytes
 
-            merges[pair] = new_index
-            vocab_idx[new_index] = vocab_idx[pair[0]] + vocab_idx[pair[1]]
+        # new_bpe_counts = sorted(bpe_counts.items(), key=lambda x: (x[1], vocab_idx2bytes[x[0][0]], vocab_idx2bytes[x[0][1]]), reverse=True)
+        # print(f"BPE counts sorted: {[((vocab_idx2bytes[pair[0]], vocab_idx2bytes[pair[1]]), v) for pair, v in new_bpe_counts][:10]}")
+        # print(f"Sorted item is {new_bpe_counts[0]}, manua sort cur pair is {cur_pair}")
+        new_index = len(vocab_idx2bytes)
+        
+        max_pair = cur_pair
+        index1 = max_pair[0]
+        index2 = max_pair[1]
+        new_bytes = vocab_idx2bytes[index1] + vocab_idx2bytes[index2]
+        # print(f"vocab_idx2bytes[index1] is {vocab_idx2bytes[index1]}, vocab_idx2bytes[index2] is {vocab_idx2bytes[index2]}, new_bytes is {new_bytes}")
 
-        indices = merge_indices(indices, merges)
+        merges[(index1, index2)] = new_index
+        return_merges.append((vocab_idx2bytes[index1], vocab_idx2bytes[index2]))
+        vocab_bytes2idx[new_bytes] = new_index
+        vocab_idx2bytes[new_index] = new_bytes
+        new_str = new_bytes.decode("utf-8")
 
-    print(f"vocab size is {len(vocab_idx)}, final indices size is {len(indices)}")
-
-    return (vocab_idx, merges)
+        # 更新bpe_counts
+        merge_pair(pre_token_cnt, pre_token_indices, bpe_counts, new_str, max_pair, new_index)
+                  
+    return (vocab_idx2bytes, return_merges)
 
     
 

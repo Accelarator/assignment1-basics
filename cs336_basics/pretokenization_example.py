@@ -1,17 +1,20 @@
 import os
-from typing import BinaryIO
+import multiprocessing as mp
+from typing import BinaryIO, List
+from collections import defaultdict
+import regex
 
 
 def find_chunk_boundaries(
     file: BinaryIO,
     desired_num_chunks: int,
-    split_special_token: bytes,
+    split_special_tokens: List[bytes],
 ) -> list[int]:
     """
     Chunk the file into parts that can be counted independently.
     May return fewer chunks if the boundaries end up overlapping.
     """
-    assert isinstance(split_special_token, bytes), "Must represent special token as a bytestring"
+    assert all(isinstance(token, bytes) for token in split_special_tokens), "Must represent special tokens as bytestrings"
 
     # Get total file size in bytes
     file.seek(0, os.SEEK_END)
@@ -38,10 +41,16 @@ def find_chunk_boundaries(
                 chunk_boundaries[bi] = file_size
                 break
 
-            # Find the special token in the mini chunk
-            found_at = mini_chunk.find(split_special_token)
-            if found_at != -1:
-                chunk_boundaries[bi] = initial_position + found_at
+            # Find any of the special tokens in the mini chunk
+            found_positions = []
+            for token in split_special_tokens:
+                found_at = mini_chunk.find(token)
+                if found_at != -1:
+                    found_positions.append(found_at)
+            
+            if found_positions:
+                # Use the earliest found position
+                chunk_boundaries[bi] = initial_position + min(found_positions)
                 break
             initial_position += mini_chunk_size
 
@@ -49,35 +58,45 @@ def find_chunk_boundaries(
     return sorted(set(chunk_boundaries))
 
 
+def process_chunk(args):
+    """Process a chunk of text and return pre-tokenization counts"""
+    chunk_text, pattern = args
+    pre_token_cnt = defaultdict(int)
+    
+    for match in regex.finditer(pattern, chunk_text):
+        segment = match.group()
+        pre_token_cnt[segment] += 1
+    
+    return pre_token_cnt
 
-def train_bpe(string: str, num_merges: int) -> BPETokenizerParams:  # @inspect string, @inspect num_merges
-    # Start with the list of bytes of string.
-    indices = list(map(int, string.encode("utf-8")))  # @inspect indices
-    merges: dict[tuple[int, int], int] = {}  # index1, index2 => merged index
-    vocab: dict[int, bytes] = {x: bytes([x]) for x in range(256)}  # index -> bytes
-    for i in range(num_merges):
-        # Count the number of occurrences of each pair of tokens
-        counts = defaultdict(int)
-        for index1, index2 in zip(indices, indices[1:]):  # For each adjacent pair
-            counts[(index1, index2)] += 1  # @inspect counts
-        # Find the most common pair.
-        pair = max(counts, key=counts.get)  # @inspect pair
-        index1, index2 = pair
-        # Merge that pair.
-        new_index = 256 + i  # @inspect new_index
-        merges[pair] = new_index  # @inspect merges
-        vocab[new_index] = vocab[index1] + vocab[index2]  # @inspect vocab
-        indices = merge(indices, pair, new_index)  # @inspect indices
-    return BPETokenizerParams(vocab=vocab, merges=merges)
 
+def train_bpe(text: str, num_merges: int):  # @inspect string, @inspect num_merges
+    # This is a placeholder - actual implementation would depend on the full BPE training algorithm
+    pass
+    
 ## Usage
-with open(..., "rb") as f:
-    num_processes = 4
-    boundaries = find_chunk_boundaries(f, num_processes, b"<|endoftext|>")
+def parallel_bpe_training(file_path: str, num_processes: int = 4):
+    with open(file_path, "rb") as f:
+        boundaries = find_chunk_boundaries(f, num_processes, [b""])
 
-    # The following is a serial implementation, but you can parallelize this
-    # by sending each start/end pair to a set of processes.
-    for start, end in zip(boundaries[:-1], boundaries[1:]):
-        f.seek(start)
-        chunk = f.read(end - start).decode("utf-8", errors="ignore")
-        # Run pre-tokenization on your chunk and store the counts for each pre-token
+    # Parallel implementation using multiprocessing
+    chunks = []
+    pattern = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+    
+    with open(file_path, "rb") as f:
+        for start, end in zip(boundaries[:-1], boundaries[1:]):
+            f.seek(start)
+            chunk = f.read(end - start).decode("utf-8", errors="ignore")
+            chunks.append((chunk, pattern))
+    
+    # Process chunks in parallel
+    with mp.Pool(num_processes) as pool:
+        results = pool.map(process_chunk, chunks)
+    
+    # Combine results from all processes
+    combined_counts = defaultdict(int)
+    for pre_token_cnt in results:
+        for token, count in pre_token_cnt.items():
+            combined_counts[token] += count
+    
+    return combined_counts

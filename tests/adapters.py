@@ -593,3 +593,5 @@ def run_train_bpe(
     """
 
     return train_bpe(input_path, vocab_size, special_tokens)
+
+    
