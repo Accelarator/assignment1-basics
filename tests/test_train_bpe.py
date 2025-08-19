@@ -97,6 +97,6 @@ def test_train_bpe_special_tokens(snapshot):
     )
 
 if __name__ == "__main__":
-    test_train_bpe_speed()
+    # test_train_bpe_speed()
     test_train_bpe()
-    test_train_bpe_special_tokens()
+    # test_train_bpe_special_tokens()

@@ -9,7 +9,7 @@ import numpy.typing as npt
 import torch
 from torch import Tensor
 
-from cs336_basics.tokenizer import train_bpe, train_bpe_old, BPETokenizerParams
+from cs336_basics.tokenizer import train_bpe, train_bpe_old, BPETokenizerParams, parallel_bpe_training
 
 
 def run_linear(
@@ -592,6 +592,7 @@ def run_train_bpe(
                 Merges are ordered by order of creation.
     """
 
-    return train_bpe(input_path, vocab_size, special_tokens)
+    # return train_bpe(input_path, vocab_size, special_tokens)
+    return parallel_bpe_training(input_path, vocab_size, special_tokens, 1)
 
     
