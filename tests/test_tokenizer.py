@@ -462,3 +462,17 @@ def _encode(tokenizer, text):
     for just this function. We set the memory limit to 1MB.
     """
     return tokenizer.encode(text)
+
+
+if __name__ == "__main__":
+    tokenizer = get_tokenizer_from_vocab_merges_path(
+        vocab_path=VOCAB_PATH,
+        merges_path=MERGES_PATH,
+    )
+    all_ids = []
+    with open(FIXTURES_PATH / "tinystories_sample.txt") as f:
+        for _id in tokenizer.encode_iterable(f):
+            all_ids.append(_id)
+    with open(FIXTURES_PATH / "tinystories_sample.txt") as f:
+        corpus_contents = f.read()
+    assert tokenizer.decode(all_ids) == corpus_contents

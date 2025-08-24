@@ -94,38 +94,6 @@ def find_chunk_boundaries(
 
     # Make sure all boundaries are unique, but might be fewer than desired_num_chunks
     return sorted(set(chunk_boundaries))
-
-
-def merge(indices: list[int], pair: tuple[int, int], new_index: int) -> list[int]:
-    """Return `indices`, but with all instances of `pair` replaced with `new_index`."""
-    new_indices = []
-    i = 0
-    while i < len(indices):
-        if i + 1 < len(indices) and indices[i] == pair[0] and indices[i+1] == pair[1]:
-            new_indices.append(new_index)
-            i += 2
-        else:
-            new_indices.append(indices[i])
-            i += 1
-    return new_indices
-
-class BPETokenizer(Tokenizer):
-    """BPE tokenizer given a set of merges and a vocabulary."""
-    def __init__(self, params: BPETokenizerParams):
-        self.params = params
-
-    def encode(self, string: str) -> list[int]:
-        indices = list(map(int, string.encode("utf-8")))
-        # Note: this is a very slow implementation
-        for pair, new_index in self.params.merges.items():
-            indices = merge(indices, pair, new_index)
-        return indices
-    
-    def decode(self, indices: list[int]) -> str:
-        bytes_list = list(map(self.params.vocab.get, indices))
-        string = b"".join(bytes_list).decode("utf-8")
-        return string
-
 def merge_pair(pre_token_cnt, pre_token_indices, bpe_counts, new_bytes, pair, new_index):
 
     for segment, indices in pre_token_indices.items():
@@ -175,23 +143,38 @@ def get_bpe_counts(pre_token_cnt, pre_token_indices):
 
     return bpe_counts
 
+def get_pre_tokens(chunks: list[str], 
+                   vocab_bytes2idx: dict[bytes, int], 
+                   special_tokens: list[str]| None = None
+                   ):
+    pattern = GPT2_TOKENIZER_REGEX 
+    pre_token_cnt = defaultdict(int) # token str => token cnt
+    pre_token_indices = {} # token str => token indices
+    pre_token_seg = [] # list[tuple(str, token_list)]
+    for text in chunks:
+        token_list = []
+        if special_tokens and text in special_tokens:
+            # print(f"{vocab_bytes2idx.get(text.encode("utf-8"))}")
+            pre_token_seg.append((text, [vocab_bytes2idx.get(text.encode("utf-8"))]))
+        else:
+            for match in re.finditer(pattern, text):
+                segment = match.group().encode("utf-8")
+                pre_token_cnt[segment] += 1
+                pre_token_indices[segment] = [vocab_bytes2idx.get(bytes([b])) for b in segment]
+                token_list.append(segment)
+            pre_token_seg.append((text, token_list))
+    
+    return pre_token_cnt, pre_token_indices, pre_token_seg
+
 def process_pre_tokens(args):
-    text, special_tokens = args
+    text, special_tokens, vocab_bytes2idx = args
 
     start_time = time.time()
     
     chunks = re.split("|".join(map(re.escape, special_tokens)), text)
     # print(chunks)
 
-    pattern = GPT2_TOKENIZER_REGEX  
-    pre_token_cnt = defaultdict(int) # token str => token cnt
-    pre_token_indices = {} # token str => token indices
-    for text in chunks:
-        for match in re.finditer(pattern, text):
-            segment = match.group().encode("utf-8")
-            pre_token_cnt[segment] += 1
-            pre_token_indices[segment] = list(map(lambda x: x + len(special_tokens), segment))
-
+    pre_token_cnt, pre_token_indices, _ = get_pre_tokens(chunks, vocab_bytes2idx, special_tokens)
     bpe_counts = get_bpe_counts(pre_token_cnt, pre_token_indices)
     end_time = time.time()
     # print(f"bpe_count time is {end_time - start_time:.4f} seconds")
@@ -207,6 +190,7 @@ def train_bpe(input_path, vocab_size, special_tokens, num_processes = 4):
     end_time = time.time()
     print(f"find_chunk_boundaries time is {end_time - start_time:.4f} seconds")
 
+    vocab_idx2bytes, vocab_bytes2idx = initial_vocab(special_tokens)
 
     start_time = time.time()
     chunks = []
@@ -214,7 +198,7 @@ def train_bpe(input_path, vocab_size, special_tokens, num_processes = 4):
         for start, end in zip(boundaries[:-1], boundaries[1:]):
             f.seek(start)
             chunk = f.read(end - start).decode("utf-8", errors="ignore")
-            chunks.append((chunk, special_tokens))
+            chunks.append((chunk, special_tokens, vocab_bytes2idx))
     end_time = time.time()
     print(f"split chunks time is {end_time - start_time:.4f} seconds")
 
@@ -236,7 +220,6 @@ def train_bpe(input_path, vocab_size, special_tokens, num_processes = 4):
 
         pre_token_indices.update(res[2])
 
-    vocab_idx2bytes, vocab_bytes2idx = initial_vocab(special_tokens)
     # print(f"vocab_idx2bytes: {vocab_idx2bytes}, vocab_bytes2idx: {vocab_bytes2idx}")
     merges: dict[tuple[int, int], int] = {} # index1, index2 => merged index
     return_merges = []
@@ -301,29 +284,88 @@ def get_compression_ratio(string: str, indices: list[int]) -> float:
     return num_bytes / num_tokens
 
 
-if __name__ == "__main__":
-    # tokenization_examples()
-    # character_tokenizer()
-    # byte_tokenizer()
-    # word_tokenizer()
+class BPETokenizer(Tokenizer):
+    """BPE tokenizer given a set of merges and a vocabulary."""
+    def __init__(self, 
+                vocab: dict[int, bytes],
+                merges: list[tuple[bytes, bytes]],
+                special_tokens: list[str] | None = None):
+        
+        self.vocab_idx2bytes = vocab
+        self.vocab_bytes2idx = {v: k for k, v in vocab.items()}
+        self.merges = merges
+        if special_tokens:
+            self.special_tokens = sorted(special_tokens, key=lambda x: len(x), reverse=True)
+        else:
+            self.special_tokens = special_tokens
+
+    def encode(self, string: str) -> list[int]:
+
+        if self.special_tokens:
+            escaped_tokens = [re.escape(token) for token in self.special_tokens]  # 转义特殊字符
+            special_pattern = "(" + "|".join(escaped_tokens) + ")"
+            chunks = re.split(special_pattern, string)
+        else:
+            chunks = [string]
+        # print(f"chunks is {chunks}")
+        _, pre_token_indices, pre_token_seg = get_pre_tokens(chunks, self.vocab_bytes2idx, self.special_tokens)
+
+        # print(f"pre_token_seg is {pre_token_seg}")
+        # print(f"pre_token_indices is {pre_token_indices}")
+        for merge in self.merges:
+            new_bytes = merge[0] + merge[1]
+
+            for segment, indices in pre_token_indices.items():
+                if segment == b'':
+                    continue
+
+                if new_bytes in segment:
+
+                    new_index = self.vocab_bytes2idx[new_bytes]
+                    index1 = self.vocab_bytes2idx[merge[0]]
+                    index2 = self.vocab_bytes2idx[merge[1]]
+
+                    new_indices = []
+                    i = 0
+                    while i < len(indices):
+                        if i + 1 < len(indices) and indices[i] == index1 and indices[i+1] == index2:
+                            new_indices.append(new_index)
+                            i += 2
+                        else:
+                            new_indices.append(indices[i])
+                            i += 1
+                    pre_token_indices[segment] = new_indices
+
+        # print(f"result pre_token_indices {pre_token_indices}")
+        res_indices = []
+        for pre_token_tuple in pre_token_seg:
+            chunk = pre_token_tuple[0]
+            pre_tokens = pre_token_tuple[1]
+            if chunk == "":
+                continue
+            if self.special_tokens and chunk in self.special_tokens:
+                res_indices.extend(pre_tokens)
+            else:
+                for pre_token in pre_tokens:
+                    res_indices.extend(pre_token_indices[pre_token])
+
+        return res_indices
     
-    # input_path = FIXTURES_PATH / "tinystories_sample_5M.txt"
-    input_path = FIXTURES_PATH / "special_token_double_newlines_non_whitespace.txt"
-    # input_path = FIXTURES_PATH / "TinyStoriesV2-GPT4-valid.txt"
-    special_tokens=["<|endoftext|>"]
-    vocab, merges = train_bpe(
-        input_path=input_path,
-        vocab_size=1000,
-        special_tokens=special_tokens,
-        num_processes=4
-    )
-    # print(f"vocab is {vocab}, merges is {merges}")
+    def decode(self, indices: list[int]) -> str:
+        # print(f"indices is {indices}")
+        bytes_list = []
+        for item in indices:
+            if isinstance(item, list):
+                bytes_list.extend(list(map(self.vocab_idx2bytes.get, item)))
+            else:
+                bytes_list.append(self.vocab_idx2bytes[item])
+                
+        string = b"".join(bytes_list).decode("utf-8", errors='replace')
+        return string
 
-    # with open(input_path, "r", encoding="utf-8") as f:
-    #     text = f.read()
-    # chunks = re.split("|".join(map(re.escape, special_tokens)), text)
-    # print(chunks)
-
-    vocabs_without_specials = [word for word in vocab.values() if word != b"<|endoftext|>"]
-    for word_bytes in vocabs_without_specials:
-        assert b"<|" not in word_bytes
+    def encode_iterable(self, iterable) -> list[list[int]]:
+        res_encode_ids = []
+        for chunk in iterable:
+            encode_ids = self.encode(chunk)
+            res_encode_ids.append(encode_ids)
+        return res_encode_ids
