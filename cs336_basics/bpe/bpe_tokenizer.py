@@ -350,7 +350,14 @@ class BPETokenizer(Tokenizer):
                     res_indices.extend(pre_token_indices[pre_token])
 
         return res_indices
-    
+
+    def encode_iterable(self, iterable) -> list[int]:
+        res_encode_ids = []
+        for chunk in iterable:
+            encode_ids = self.encode(chunk)
+            res_encode_ids.extend(encode_ids)
+        return res_encode_ids
+
     def decode(self, indices: list[int]) -> str:
         # print(f"indices is {indices}")
         bytes_list = []
@@ -363,9 +370,4 @@ class BPETokenizer(Tokenizer):
         string = b"".join(bytes_list).decode("utf-8", errors='replace')
         return string
 
-    def encode_iterable(self, iterable) -> list[list[int]]:
-        res_encode_ids = []
-        for chunk in iterable:
-            encode_ids = self.encode(chunk)
-            res_encode_ids.append(encode_ids)
-        return res_encode_ids
+    
