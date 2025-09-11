@@ -1,9 +1,11 @@
 import pathlib
 import json
 from bpe_tokenizer import train_bpe
-
+from tests.common import gpt2_bytes_to_unicode
 
 DATA_PATH = (pathlib.Path(__file__).resolve().parents[2]) / "data"
+
+gpt2_byte_encoder = gpt2_bytes_to_unicode()
 
 def converts_bytes_to_str(obj):
     if isinstance(obj, dict):
@@ -15,9 +17,7 @@ def converts_bytes_to_str(obj):
     elif isinstance(obj, tuple):
         return tuple(converts_bytes_to_str(item) for item in obj)
     elif isinstance(obj, bytes):
-        return obj.decode('utf-8', errors='replace').replace(" ", "Ġ")
-    elif isinstance(obj, str):
-        return obj.replace(" ", "Ġ")
+        return ''.join(gpt2_byte_encoder[byte_val] for byte_val in obj)
     else:
         return obj
 
@@ -101,8 +101,25 @@ def train_owt_train(vocab_size, special_tokens, num_processes=4):
 if __name__ == "__main__":
 
     special_tokens=["<|endoftext|>"]
-    # train_tiny_stories_v2_valid(1000, special_tokens)
-    # train_tiny_stories_v2_train(10000, special_tokens, 128)
+    train_tiny_stories_v2_valid(1000, special_tokens)
+    train_tiny_stories_v2_train(10000, special_tokens, 128)
 
     train_owt_valid(32000, special_tokens, 1200)
-    # train_owt_train(32000, special_tokens, 2400)
+    train_owt_train(32000, special_tokens, 2400)
+
+
+    test_bytes = b'Hello world\n\t'
+    result = converts_bytes_to_str(test_bytes)
+    print(f"Original: {test_bytes}")
+    print(f"Converted: {result}")
+    
+    # 测试其他 bytes
+    test_cases = [
+        b'Hello world',    # 普通文本
+        b' \xe2\x80\x9c',  # 空格 + UTF-8 左引号
+        b'\n\t',          # 换行和制表符
+    ]
+    
+    for test_case in test_cases:
+        result = converts_bytes_to_str(test_case)
+        print(f"{test_case} -> {result}")

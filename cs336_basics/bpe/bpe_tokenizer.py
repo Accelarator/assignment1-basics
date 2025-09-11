@@ -9,8 +9,10 @@ import os
 from typing import BinaryIO
 import multiprocessing as mp
 import traceback
-from tests.common import FIXTURES_PATH, gpt2_bytes_to_unicode
 import time
+import json
+
+from tests.common import FIXTURES_PATH, gpt2_bytes_to_unicode
 
 GPT2_TOKENIZER_REGEX = \
     r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
@@ -22,12 +24,6 @@ class Tokenizer(ABC):
     def decode(self, indices: list[int]) -> str:
         raise NotImplementedError
 
-@dataclass(frozen=True)
-class BPETokenizerParams:
-    """All you need to specify a BPETokenizer"""
-    vocab: dict[int, bytes]  # index -> bytes
-    merges: dict[tuple[int, int], int] # index1,index2 -> new_index
-    
 def initial_vocab(special_tokens):
     vocab_idx2bytes = {}
     vocab_bytes2idx = {}
@@ -283,7 +279,6 @@ def get_compression_ratio(string: str, indices: list[int]) -> float:
     num_tokens = len(indices)
     return num_bytes / num_tokens
 
-
 class BPETokenizer(Tokenizer):
     """BPE tokenizer given a set of merges and a vocabulary."""
     def __init__(self, 
@@ -298,6 +293,45 @@ class BPETokenizer(Tokenizer):
             self.special_tokens = sorted(special_tokens, key=lambda x: len(x), reverse=True)
         else:
             self.special_tokens = special_tokens
+
+
+    @classmethod
+    def from_files(cls, vocab_filepath, merges_filepath, special_tokens=None):
+        """
+        Classmethod that constructs and return a Tokenizer from a serialized vocabulary and list of merges
+        (in the same format that your BPE training code output) and (optionally) a list of special
+        tokens. This method should accept the following additional parameters:
+        vocab_filepath: str
+        merges_filepath: str
+        special_tokens: list[str] | None = None
+        """
+        gpt2_bytes_decoder = {v: k for k, v in gpt2_bytes_to_unicode().items()}
+
+        def gpt2_str_to_bytes(s: str) -> bytes:
+            if special_tokens and (s == special_tokens or s in special_tokens):
+                return s.encode("utf-8")
+            return bytes([gpt2_bytes_decoder[c] for c in s])
+
+        with open(vocab_filepath, 'r', encoding="utf-8") as f:
+            vocab = json.load(f)
+
+        vocab = {int(k): gpt2_str_to_bytes(v) for k, v in vocab.items()}
+
+        idx = 0
+        with open(merges_filepath, 'r', encoding="utf-8") as f:
+            merges = []
+            for line in f:
+                idx += 1
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split(' ')
+                if len(parts) != 2:
+                    print(f"idx {idx} {line}")
+                    continue
+                merges.append((gpt2_str_to_bytes(parts[0]), gpt2_str_to_bytes(parts[1])))
+
+        return cls(vocab, merges, special_tokens)
 
     def encode(self, string: str) -> list[int]:
 
@@ -371,3 +405,5 @@ class BPETokenizer(Tokenizer):
         return string
 
     
+
+

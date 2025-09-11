@@ -438,7 +438,7 @@ au se
 Ġex c
 ur p
 way s
-� �
+â Ģ
 Ġout side
 Ġlaug hed
 Ġloo k
@@ -612,9 +612,7 @@ or t
 r m
 b er
 Ġe nd
-
- 
-
+Ċ Ċ
 ĠThe n
 op le
 Ġe ven
@@ -838,11 +836,11 @@ ir ed
 ill y
 Ġhe ar
 Ġu se
-� �
+âĢ Ŀ
 H i
 Ġp a
 Ġke pt
-� �
+âĢ ľ
 Th at
 Ġsqu irrel
 e ar
@@ -943,7 +941,7 @@ j oy
 Ġsw e
 i ous
 Ġsa nd
-Ġ “
+Ġ âĢľ
 a c
 or n
 Ġr ace
@@ -1059,7 +1057,7 @@ ar ing
 Ġlaug h
 Ġd el
 Ġpie ce
-� �
+âĢ Ļ
 er ed
 ĠM r
 Ġro ll
@@ -1572,9 +1570,9 @@ g g
 Ġhig her
 Ġs itting
 Ġtre asure
-. ”
+. âĢĿ
 Ġsm o
-! ”
+! âĢĿ
 Ġdanger ous
 Ġlon ely
 ĠC h
@@ -1775,8 +1773,7 @@ ll a
 Ġin c
 um b
 b r
-
- Ġ
+Ċ Ġ
 Ġbug s
 il k
 Ġwonder ful
@@ -2035,7 +2032,7 @@ pec t
 Ġb an
 irp y
 bo x
-? ”
+? âĢĿ
 Ġwas h
 Ġl ay
 Ġp our
@@ -3558,7 +3555,7 @@ gl asses
 Ġcost ume
 Ġd ess
 Ġz ipp
-, ”
+, âĢĿ
 Ġre pe
 Ġmuff in
 Ġar g
@@ -4351,7 +4348,7 @@ Gra ndma
 Ġho l
 ic er
 Ġhol iday
-Ġ �
+Ġ âĢ
 Ġbark s
 as on
 Ġthrow ing
@@ -4686,8 +4683,7 @@ la imed
 ĠG eorge
 Ġl uck
 Ġfollow ing
-Ġ 
-
+Ġ Ċ
 Ġpri ce
 ec ting
 Ġm ama
@@ -4825,7 +4821,7 @@ u esday
 Ġapp reci
 ĠS ophie
 ĠJoe y
-Ġ� �
+ĠâĢ ĵ
 Ġeag erly
 Ġsail ing
 ĠCo co
@@ -5818,7 +5814,7 @@ F r
 Ġcomple ted
 ĠW isdom
 ĠLe ave
-” .
+âĢĿ .
 Ġknight s
 Ġflag s
 ĠJ e
@@ -6513,8 +6509,7 @@ o ke
 Ġg ri
 ver s
 Ġgrow s
-Ġ 
-Ġ
+Ġ ĊĠ
 Ġsweet s
 ĠGood bye
 Ġown ers
@@ -6774,7 +6769,7 @@ us ing
 ing o
 Ġrefle ction
 Ġhus band
-� �
+âĢ Ķ
 T ake
 ri ver
 Ġcl ues
@@ -6799,7 +6794,7 @@ u de
 Ġzebra s
 Ġhedge hog
 Ġa ff
-Ġ� �
+ĠâĢ ĺ
 Ġborrow ed
 ĠRo llie
 Ġsnow fl
@@ -7068,7 +7063,7 @@ p rin
 Ġam ong
 Ġbl own
 Ġ icing
-!” .
+!âĢĿ .
 Ġr umble
 Ġafter wards
 ipp er
@@ -8052,7 +8047,7 @@ p o
 ĠP op
 ĠMad die
 Sad ly
-Ġ� �
+ĠâĢ Ķ
 Ġtravel s
 Ġal iens
 Ġtest s
@@ -8720,7 +8715,7 @@ F ire
 ĠMad dy
 ĠDan iel
 ĠAn imal
-� �
+âĢ ¦
 r or
 ĠP ig
 ĠM ine
@@ -8833,7 +8828,7 @@ st orm
 ay e
 Ġsun s
 Ġd ing
-” ,
+âĢĿ ,
 Ġzip s
 Ġstructure s
 Ġscurry ing
@@ -8886,7 +8881,7 @@ wel come
 s ers
 rag on
 o f
-?” .
+?âĢĿ .
 and ra
 Ġpo se
 Ġdisappoint ment
@@ -9529,7 +9524,7 @@ col ored
 r um
 izz a
 d og
-! ’
+! âĢĻ
 Ġst un
 Ġguit ars
 Ġchick s
